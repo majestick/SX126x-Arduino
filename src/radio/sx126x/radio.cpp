@@ -814,7 +814,7 @@ void RadioSetRxConfig(RadioModems_t modem, uint32_t bandwidth,
 		// WORKAROUND END
 
 		// Timeout Max, Timeout handled directly in SetRx function
-		RxTimeout = 0x380; // 0xFA0;
+		RxTimeout = RXTIMEOUT_LORA_MAX;
 
 		break;
 	}
@@ -949,7 +949,19 @@ uint32_t RadioTimeOnAir(RadioModems_t modem, uint8_t pktLen)
 	{
 	case MODEM_FSK:
 	{
-		airTime = rint((8 * (SX126x.PacketParams.Params.Gfsk.PreambleLength + (SX126x.PacketParams.Params.Gfsk.SyncWordLength >> 3) + ((SX126x.PacketParams.Params.Gfsk.HeaderType == RADIO_PACKET_FIXED_LENGTH) ? 0.0 : 1.0) + pktLen + ((SX126x.PacketParams.Params.Gfsk.CrcLength == RADIO_CRC_2_BYTES) ? 2.0 : 0)) /
+		// CRC Length calculation, catering for each type of CRC Calc offered in libary
+		uint8_t crcLength = (uint8_t)(SX126x.PacketParams.Params.Gfsk.CrcLength);
+		if((crcLength == RADIO_CRC_2_BYTES) || (crcLength == RADIO_CRC_2_BYTES_INV) || (crcLength == RADIO_CRC_2_BYTES_IBM)  || (crcLength == RADIO_CRC_2_BYTES_CCIT))
+		{
+			crcLength = 2;
+		} else if ((crcLength == RADIO_CRC_1_BYTES) || (crcLength == RADIO_CRC_1_BYTES_INV))
+		{
+			crcLength = 1;
+		} else
+		{
+			crcLength = 0;
+		}
+		airTime = rint((8 * (SX126x.PacketParams.Params.Gfsk.PreambleLength + (SX126x.PacketParams.Params.Gfsk.SyncWordLength >> 3) + ((SX126x.PacketParams.Params.Gfsk.HeaderType == RADIO_PACKET_FIXED_LENGTH) ? 0.0 : 1.0) + pktLen + (crcLength)) /
 						SX126x.ModulationParams.Params.Gfsk.BitRate) *
 					   1e3);
 	}
@@ -1032,14 +1044,14 @@ void RadioRx(uint32_t timeout)
 						  IRQ_RADIO_NONE);
 
 	LOG_LIB("RADIO", "RX window timeout = %ld", timeout);
+    // Even Continous mode is selected, put a timeout here
+    if (timeout != 0)
+    {
+        TimerSetValue(&RxTimeoutTimer, timeout);
+        TimerStart(&RxTimeoutTimer);
+    }
 	if (RxContinuous == true)
 	{
-		// Even Continous mode is selected, put a timeout here
-		if (timeout != 0)
-		{
-			TimerSetValue(&RxTimeoutTimer, timeout);
-			TimerStart(&RxTimeoutTimer);
-		}
 		SX126xSetRx(0xFFFFFF); // Rx Continuous
 	}
 	else

@@ -36,6 +36,7 @@ LoRaMacRegion_t region;
 bool _otaa = false;
 
 bool _dutyCycleEnabled = false;
+extern bool PublicNetwork;
 
 bool lmh_mac_is_busy = false;
 
@@ -370,82 +371,46 @@ static void OnComplianceTestTxNextPacketTimerEvent(void)
  */
 static void McpsConfirm(McpsConfirm_t *mcpsConfirm)
 {
-	if (mcpsConfirm->Status == LORAMAC_EVENT_INFO_STATUS_OK)
+	bool statusOk = (mcpsConfirm->Status == LORAMAC_EVENT_INFO_STATUS_OK);
+
+	LoRaMacState &= ~LORAMAC_TX_RUNNING;
+	switch (mcpsConfirm->McpsRequest)
 	{
-		LoRaMacState &= ~LORAMAC_TX_RUNNING;
-		switch (mcpsConfirm->McpsRequest)
+	case MCPS_UNCONFIRMED:
+	{
+		// Check Datarate
+		// Check TxPower
+		// Report unconfirmed TX finished
+		if (!statusOk) LOG_LIB("LMH", "Timeout TX + RX finished");
+		if (m_callbacks->lmh_unconf_finished != 0)
 		{
-		case MCPS_UNCONFIRMED:
-		{
-			// Check Datarate
-			// Check TxPower
-			// Report unconfirmed TX finished
-			if (m_callbacks->lmh_unconf_finished != 0)
-			{
-				m_callbacks->lmh_unconf_finished();
-			}
-			break;
+			m_callbacks->lmh_unconf_finished();
 		}
-
-		case MCPS_CONFIRMED:
-		{
-			// Check Datarate
-			// Check TxPower
-			// Check NbTrials
-
-			// Report confirmed TX finished with result
-			if (m_callbacks->lmh_conf_result != 0)
-			{
-				m_callbacks->lmh_conf_result(mcpsConfirm->AckReceived);
-			}
-			break;
-		}
-
-		case MCPS_PROPRIETARY:
-		{
-			break;
-		}
-
-		default:
-			break;
-		}
+		break;
 	}
-	if ((mcpsConfirm->Status == LORAMAC_EVENT_INFO_STATUS_RX1_TIMEOUT) || (mcpsConfirm->Status == LORAMAC_EVENT_INFO_STATUS_RX2_TIMEOUT))
+
+	case MCPS_CONFIRMED:
 	{
-		LoRaMacState &= ~LORAMAC_TX_RUNNING;
-		switch (mcpsConfirm->McpsRequest)
-		{
-		case MCPS_UNCONFIRMED:
-		{
-			// Check Datarate
-			// Check TxPower
-			// Report unconfirmed TX finished
-			LOG_LIB("LMH", "Timeout TX + RX finished");
-			if (m_callbacks->lmh_unconf_finished != 0)
-			{
-				m_callbacks->lmh_unconf_finished();
-			}
-			break;
-		}
+		// Check Datarate
+		// Check TxPower
+		// Check NbTrials
 
-		case MCPS_CONFIRMED:
+		// Report confirmed TX finished with result
+		if (!statusOk) LOG_LIB("LMH", "Timeout Conf TX finished %s", mcpsConfirm->AckReceived ? "SUCC" : "FAIL");
+		if (m_callbacks->lmh_conf_result != 0)
 		{
-			// Check Datarate
-			// Check TxPower
-			// Check NbTrials
-
-			// Report confirmed TX finished with result
-			LOG_LIB("LMH", "Timeout Conf TX finished %s", mcpsConfirm->AckReceived ? "SUCC" : "FAIL");
-			if (m_callbacks->lmh_conf_result != 0)
-			{
-				m_callbacks->lmh_conf_result(mcpsConfirm->AckReceived);
-			}
-			break;
+			m_callbacks->lmh_conf_result(mcpsConfirm->AckReceived);
 		}
+		break;
+	}
 
-		default:
-			break;
-		}
+	case MCPS_PROPRIETARY:
+	{
+		break;
+	}
+
+	default:
+		break;
 	}
 }
 
@@ -727,7 +692,7 @@ static void MlmeConfirm(MlmeConfirm_t *mlmeConfirm)
 }
 
 lmh_error_status lmh_init(lmh_callback_t *callbacks, lmh_param_t lora_param, bool otaa,
-						  eDeviceClass nodeClass, LoRaMacRegion_t user_region)
+						  eDeviceClass nodeClass, LoRaMacRegion_t user_region, bool region_change)
 {
 	region = (LoRaMacRegion_t)user_region;
 	char strlog1[64];
@@ -741,6 +706,8 @@ lmh_error_status lmh_init(lmh_callback_t *callbacks, lmh_param_t lora_param, boo
 	_otaa = otaa;
 
 	_dutyCycleEnabled = m_param.duty_cycle;
+
+	PublicNetwork = m_param.enable_public_network;
 
 #if (STATIC_DEVICE_EUI != 1)
 	m_callbacks->BoardGetUniqueId(DevEui);
@@ -778,7 +745,7 @@ lmh_error_status lmh_init(lmh_callback_t *callbacks, lmh_param_t lora_param, boo
 	LoRaMacPrimitives.MacMlmeConfirm = MlmeConfirm;
 	LoRaMacCallbacks.GetBatteryLevel = m_callbacks->BoardGetBatteryLevel;
 
-	error_status = LoRaMacInitialization(&LoRaMacPrimitives, &LoRaMacCallbacks, region, nodeClass);
+	error_status = LoRaMacInitialization(&LoRaMacPrimitives, &LoRaMacCallbacks, region, nodeClass, region_change);
 	if (error_status != LORAMAC_STATUS_OK)
 	{
 		return LMH_ERROR;
@@ -1150,6 +1117,11 @@ lmh_error_status lmh_class_request(DeviceClass_t newClass)
 	return Errorstatus;
 }
 
+/**
+ * @brief Get the device class
+ * 
+ * @param currentClass 0 or 2 for Class A or C (Class B is not supported)
+ */
 void lmh_class_get(DeviceClass_t *currentClass)
 {
 	MibRequestConfirm_t mibReq;
@@ -1160,16 +1132,35 @@ void lmh_class_get(DeviceClass_t *currentClass)
 	*currentClass = mibReq.Param.Class;
 }
 
+/**
+ * @brief Get device LoRaWAN address
+ * 
+ * @return uint32_t device address
+ */
 uint32_t lmh_getDevAddr(void)
 {
 	return LoRaMacGetOTAADevId();
 }
 
+/**
+ * @brief Set the AS923 frequency variant
+ * 
+ * @param version 1, 2, 3 or 4 for AS923-1 (default), AS923-2, AS923-3 or AS923-4
+ * @return true 
+ * @return false 
+ */
 bool lmh_setAS923Version(uint8_t version)
 {
 	return RegionAS923SetVersion(version);
 }
 
+/**
+ * @brief Set number of retries for confirmed packages
+ * 
+ * @param retries number of retries
+ * @return true if success
+ * @return false if failed (number of retries to small or large)
+ */
 bool lmh_setConfRetries(uint8_t retries)
 {
 	if ((retries > 0) && (retries < 8))
@@ -1178,4 +1169,23 @@ bool lmh_setConfRetries(uint8_t retries)
 		return true;
 	}
 	return false;
+}
+
+/**
+ * @brief Get number of retries
+ * 
+ * @return uint8_t number of retries
+ */
+uint8_t lmh_getConfRetries(void)
+{
+	return max_ack_retries;
+}
+
+/**
+ * @brief Reset MAC parameters
+ * 
+ */
+void lmh_reset_mac(void)
+{
+	ResetMacCounters();
 }

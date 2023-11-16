@@ -4,9 +4,37 @@ Arduino library for LoRa communication with Semtech SX126x chips. It is based on
 
 # Release Notes
 
+## V2.0.21 Some fixes
+  - Fix public/private network always public
+  - Add option to restart MAC stack to change e.g. region without re-init timers
+
+## V2.0.20 Add MAC parameter reset function
+  - Add option to reset the MAC counters
+
+## V2.0.19 Fix the release mess
+  - Sorry released the wrong branch
+  
+## V2.0.18 Fix typo
+  - Fix typo in RadioTimeOnAir for FSK
+  
+## V2.0.17 Enhancement
+  - Improve RadioTimeOnAir for FSK, thanks to _**@mikedupi**_
+
+## V2.0.16 Fix Confirmed message bug
+  - Fix runtime problem in LoRaMacHelper, thanks to _**@avillacis**_
+
+## V2.0.15 Several fixes and improvements
+  - Update examples, thanks to _**@DanielBustillos**_    
+  - Cleanup RAK4630 initialization    
+  - Add lmh_getConfRetries() to readback the confirmed package retry setting    
+  - Make RX timeout configurable with `#define RXTIMEOUT_LORA_MAX`, thanks to _**@kisChang**_     
+  - Add set default RX gain in SX126xSertRx, thanks to _**@kisChang**_
+  - Allow change of TCXO control with hwConfig structure, thanks to _**@dberlin**_
+  - Add confirmed failed callback if the degraded datarate becomes insufficient to transmit the payload length, thanks to _**@avillacis**_
+  
 ## V2.0.14 Fix timer and RX timeouts
-  - Fix RP2040 timers, thanks to @kisChang
-  - Fix RX window timeouts, thanks to @battosai30
+  - Fix RP2040 timers, thanks to _**@kisChang**_
+  - Fix RX window timeouts, thanks to _**@battosai30**_
   
 ## V2.0.13 Fix RX2 freuency
   - Fix wrong RX2 frequency in AS923-2, AS923-3, AS923-4

@@ -154,7 +154,7 @@ typedef struct LoraMacHelper_ComplianceTest_s
  * @retval error status
  */
 lmh_error_status lmh_init(lmh_callback_t *callbacks, lmh_param_t lora_param,
-						  bool otaa, eDeviceClass nodeClass = CLASS_A, LoRaMacRegion_t region = LORAMAC_REGION_EU868);
+						  bool otaa, eDeviceClass nodeClass = CLASS_A, LoRaMacRegion_t region = LORAMAC_REGION_EU868, bool region_change = false);
 
 /**@brief Send data
  *
@@ -298,5 +298,20 @@ bool lmh_setAS923Version(uint8_t version);
  * \retval true if value is within allowed range, false otherwise
  */
 bool lmh_setConfRetries(uint8_t retries);
+
+/**
+ * @brief Get max retries for confirmed messages
+ * LoRaMac will resend confirmed message if no ACK was received until number of retries are exhausted
+ * Limited to max of 8 retries
+ *
+ * \retval Number of retries
+ */
+uint8_t lmh_getConfRetries(void);
+
+/**
+ * @brief Reset MAC counters
+ * 
+ */
+void lmh_reset_mac(void);
 
 #endif
